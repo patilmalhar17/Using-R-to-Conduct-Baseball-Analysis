@@ -1,0 +1,211 @@
+---
+title: "Final Project"
+author: "Malhar Patil"
+date: "2023-12-08"
+format: 
+  html:
+    embed-resources: true
+    code-tools: true
+    code-summary: "Code"
+---
+
+## Introduction and Background
+
+Packages I'll be using for the project:
+```{r, message = F}
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+```
+
+I'm a big fan of sports, especially football and baseball, but the only sport that I've played formally was basketball. The reason why I'm such a fan of football and baseball is because I love watching it and absorbing the statistics involved in them. Baseball is far more analytically driven than any sport I know and due to that I chose to do this project on baseball statistics and what I could find from specifically the Lahman database.
+```{r, message = F}
+library(Lahman)
+```
+
+When coming up with what database I should choose, I researched on the internet for simple databases that could help me understand trends in baseball as well as relationships between different stats. I found the Lahman database with its 31 datasets and I found that it has plenty of information that I could analyze. I have always preferred looking at pitching statistics for whatever reason but they have always interested me more than any other statistic. Here is a preview of the Pitching dataset:
+```{r}
+head(Pitching)
+```
+
+From this dataset, we can see that there are 30 different variables: 
+```{r}
+pitchingLabels
+```
+
+I found ten of these 30 variables to be useful to answer my questions in the future. I chose to focus on the playerID, yearID, teamID, G, GS, IPouts, SO,  BAOpp, ERA, BFP variables. One thing I saw that this dataset was missing was a variable that gave the full names of the players. There was the playerID but there was nothing I could really do with that because I didn't know who the players were when there was a shortened ID code for them. So what I did was go into the People dataset and discover there were two variables called "nameFirst" and "nameLast" respectively. To get the full name I decided to create another variable in the People dataset called fullName and then join that column with the Pitching dataset.
+```{r}
+People <- People |> mutate(fullName = paste(nameFirst, nameLast, sep = " "))
+
+Pitching <- People |> select(playerID, fullName) |> left_join(Pitching, by = "playerID")
+
+head(Pitching)
+```
+
+Now taking a look at the Pitching dataset, we can see that the fullName variable is now in place in it. However, when you sort yearID it goes all the way down to 1871. Major League Baseball has been around for a while but it doesn't seem fair to include data from these years because of how skewed the statistics were at that time. There were very few games being played in the regular season and the number of games was always fluctuating inconsistently between years. 1948 was also the first year of integration so before MLB was primarily being played white players and the Negro League players were not allowed to play. So I decided to do some research and found out that the 162 game regular season that is being played nowadays has been around since 1961. So I filtered the Pitching dataset to only include years since 1961 so that it could be fair.
+
+```{r}
+Pitching <- Pitching |> filter(yearID >= 1961)
+```
+
+Back to the dataset, I noticed that there were variables that were not present in the dataset but could be calculated by what was provided. An important variable that wasn't fully calculated yet was the innings pitched variable. Since IPouts is already provided for us, innings pitched is easy to calculate as just a third of IPouts. This is because every inning pitched means that the pitcher had gotten three outs. IPouts counts the number of outs that the pitcher had gotten. The innings pitched variable is calculated by dividing IPouts by 3. 
+```{r}
+Pitching <- Pitching |> mutate(IP = IPouts / 3)
+```
+
+Fangraphs is a website I use a lot when I evaluate players for fun. Front offices in MLB tend to use some of the advanced stats that are present on websites such as Fangraphs. One thing about the Pitching dataset is that isn't very advanced. It uses variables such as ERA, SO and BB which are great to look at but they also don't take into account other factors such as the proportions of strikeouts and walks the player has compared to the volume of their pitching workload. BB% and K% (K = SO) are pretty popular advanced baseball stats found on Fangraphs and these stats are very easy to calculate with the given variables in the dataset. The way to calculate these are by dividing BB and SO by BFP respectively and then multiplying them by 100 to get the percentage. This way we can see the proportion of walks and strikeouts a pitcher has compared to how many batters they have faced. Because of the difference between innings pitched, we can find out what pitcher is most effective or "wild" instead of just counting who has the most strikeouts and who has the most walks. For example, Nolan Ryan in 1973 has the most strikeouts at 383 while facing 1355 batters but Randy Johnson in 2001 had 372 strikeouts while only facing 994 batters.
+```{r}
+Pitching <- Pitching |> mutate(walkRate = (BB / BFP) * 100)
+
+Pitching <- Pitching |> mutate(KRate = (SO / BFP) * 100)
+```
+
+Due to these new variables in the dataset I can now incorporate them into whatever questions I have. I have tons of questions about what can be found in the dataset but I toned it down to only three:
+
+1. What is the relationship between strikeout % and ERA and opponent batting average as well as the relationship between walk % and ERA and strikeout % for starting pitchers specifically?
+2. How does average strikeout % differ between relief pitchers and starting pitchers?
+3. What is the trend of strikeout % and walk % throughout the years?
+
+Before answering the questions, I filtered two datasets to separate the starting pitchers and the relief pitchers as I will be needing that for the second question. The way I constituted who was a starter and who was a reliever was by creating a dataset called pitching_starters to only include pitchers who started at least 20 games and pitched in at least 150 innnings. This way I can get rid of small sample sizes that would skew the results.
+```{r}
+pitching_starters <- Pitching |> filter(IP >= 150, GS >= 20)
+```
+
+For the other dataset for relievers, I made a dataset that only included pitchers that pitched in at least 30 games and started less than 10. The reason why I made the cutoff for games started so high was because I know that teams sometimes start relief pitchers in games to pitch a few innings if they have too many injuries in the starting rotation. I also did not want pitchers who pitched in only a few games as that just means that they were on the major league roster for a short while in the season.
+```{r}
+pitching_relievers <- Pitching |> filter(G >= 30, GS < 10)
+```
+
+To make sure that the strikeout rate and walk rate variables are 100% correct, I verified the values on Fangraphs.
+```{r}
+pitcher_with_max_krate <- pitching_starters |> filter(KRate == max(KRate)) |> select(yearID, fullName, KRate)
+pitcher_with_max_krate
+
+pitcher_with_min_krate <- pitching_starters |> filter(KRate == min(KRate)) |> select(yearID, fullName, KRate)
+pitcher_with_min_krate
+
+pitcher_with_max_bbrate <- pitching_starters |> filter(walkRate == max(walkRate)) |> select(yearID, fullName, walkRate)
+pitcher_with_max_bbrate
+
+pitcher_with_min_bbrate <- pitching_starters |> filter(walkRate == min(walkRate)) |> select(yearID, fullName, walkRate)
+pitcher_with_min_bbrate
+```
+Looking at the Fangraphs website, I can verify that Gerrit Cole's K % in 2019 is 39.9 and Nate Cornejo's in 2003 is 5.5, Bobby Witt's BB % in 1986 is 19.3 and Carlos Silva's in 2005 is 1.2. 
+
+Now that all the variables are verified, we can continue. Here's an example of a univariate visualization of a categorical variable. I used the pitching_starters dataset and the categorical variable at hand is the teamID variable. Instead of just using the pitching_starters dataset I created another dataset that only looked at starting pitchers from the last ten seasons that had an ERA that was at most 3.50. I created a barplot of this data:
+```{r}
+last_ten_pitching_starters <- pitching_starters |> filter(yearID <= 2022, yearID >= 2013, ERA <= 3.50)
+ggplot(last_ten_pitching_starters, aes(x = teamID)) + 
+  geom_bar(fill = "blue") + 
+  labs(title = "Distribution of Teams with Starters Who Had a <= 3.50 ERA in Last Ten Seasons", x = "Team", y = "Count") + 
+  theme(plot.title = element_text(size = 12.5), axis.text.x = element_text(angle = 45, margin = margin(t = 10)))
+```
+As we can see, the team with the most starting pitchers with an ERA of at most 3.50 in the last ten seasons is the Los Angeles Dodgers at close to 20 which is not surprising at all because of their regular season success in the last ten seasons. We can also see that the Minnesota Twins have the least amount of such pitchers with only about 2. 
+
+Here is an example of univariate visualization of a numerical variable. The numerical variable is the number of complete games pitched and I used in the pitching_starters dataset. For this visualization, I actually created two separate ones for 2022 and 2013 which are 10 seasons apart. I made two different barplots for the two datasets and then plotted them side by side to emphasize the difference of the number of complete games between the two seaons.
+```{r}
+twentytwo_pitching_starters <- pitching_starters |> filter(yearID == 2022)
+twentytwo <- ggplot(twentytwo_pitching_starters, aes(x = CG)) + 
+  geom_bar(fill = "blue") + 
+  labs(title = "Distribution of Starters and Number of Complete Games in 2022", x = "Number of Complete Games", y = "Number of Starters") + 
+  theme(plot.title = element_text(size = 7.5))
+
+thirteen_pitching_starters <- pitching_starters |> filter(yearID == 2013)
+thirteen <- ggplot(thirteen_pitching_starters, aes(x = CG)) + 
+  geom_bar(fill = "blue") + 
+  labs(title = "Distribution of Starters and Number of Complete Games in 2013", x = "Number of Complete Games", y = "Number of Starters") + 
+  theme(plot.title = element_text(size = 7.5))
+grid.arrange(twentytwo, thirteen, ncol = 2)
+```
+As we can see here, the number of complete games is more spread out in 2013 and there are more pitchers who have thrown at least one complete game in 2013. Both datasets are skewed right but the 2022 dataset has an outlier at 6 complete games while the 2013 dataset is more smooth.
+
+## Exploratory Data Analysis
+
+### 1. What is the relationship between strikeout % and ERA and opponent batting average as well as the relationship between walk % and ERA and strikeout % for starting pitchers specifically?
+
+I first want to visualize the relationship between walk % and strikeout % and a good way to see this is by plotting a scatterplot of the data and line of best fit to emphasize the relationship.
+```{r, message = F}
+ggplot(pitching_starters, aes(x = walkRate, y = KRate)) +
+  geom_point(color = 'blue', alpha = 0.75) + geom_smooth(method = "lm", se = F, color = 'red') + 
+  labs(title = "Scatterplot of Walk Rate vs. Strikeout Rate",
+       x = "Walk Rate (%)",
+       y = "Strikeout Rate (%)")
+```
+For starters specifically, it looks like there might be a positive relationship for strikeout rate and walk rate however it is very minor. It would make sense that walk rate would increase when strikeout rate increases because trying to strikeout more batters will lead to less accuracy and "wilder" results. However, because there seems to be such a weak correlation between the two it would be better to perform inferential statistical analysis which I will be doing later on.
+
+I also want to check the relationship between walk % and ERA, so I plotted a similar scatterplot except I changed the y variable to ERA.
+```{r, message = F}
+ggplot(pitching_starters, aes(x = walkRate, y = ERA)) +
+  geom_point(color = 'blue', alpha = 0.75) + geom_smooth(method = "lm", se = F, color = 'red') + 
+  labs(title = "Scatterplot of Walk Rate vs. ERA",
+       x = "Walk Rate (%)",
+       y = "ERA")
+```
+Now this is a much stronger positive relationship and it also makes sense. As the walk rate increases, the ERA also increases because walking batters will lead to more traffic on the bases and more chances to score for the other team. Even though there are some outliers (some pitchers had fairly low walk rates but extremely high ERAs and some had fairly high walk rates but pretty low ERAs), the relationship is still pretty strong.
+
+I also wanted to find if there was a relationship between strikeout % and opponent batting average.
+```{r, message = F}
+ggplot(pitching_starters, aes(x = KRate, y = BAOpp)) +
+  geom_point(color = 'blue', alpha = 0.75) + geom_smooth(method = "lm", se = F, color = 'red') + 
+  labs(title = "Scatterplot of Strikeout Rate vs. Opponent Batting Average",
+       x = "Strikeout Rate (%)",
+       y = "Opponent Batting Average")
+```
+The relationship between K rate and BAOpp is the strongest relationship so far and it is the first negative one. We can now conclude that when evaluating starting pitchers, strikeout % is very important if we care about how many hits the opponent will get off him. It is also impressive to see how much better Gerrit Cole in 2019 was in terms of strikeout %. We know he is the one who had a 40% strikeout rate and this seems like so much higher than the rest of starting pitchers in history.
+
+The last thing I wanted to see using strikeout % was its relationship with ERA. 
+```{r, message = F}
+ggplot(pitching_starters, aes(x = KRate, y = ERA)) +
+  geom_point(color = 'blue', alpha = 0.75) + geom_smooth(method = "lm", se = F, color = 'red') + 
+  labs(title = "Scatterplot of Strikeout Rate vs. ERA",
+       x = "Strikeout Rate (%)",
+       y = "ERA")
+```
+Just like strikeout % and opponent batting average, the relationship with ERA was also negative but surprisingly not as strong. I think due to the fact that strikeout % and walk % has a weak but positive relationship and the fact that walk % and ERA have a positive relationship as well, this might have weakened the negativity of the relationship between strikeout % and ERA.
+
+### 2. How does average strikeout % differ between relief pitchers and starting pitchers?
+
+Since we have data for relief pitchers and starting pitchers separately we can compute separate means of the strikeout % of the two and then compare them. Let's first calculate the average strikeout % for relief pitchers.
+```{r}
+mean_reliever_krate <- mean(pitching_relievers$KRate, na.rm = T)
+mean_reliever_krate
+```
+
+Now let's calculate it for starting pitchers.
+```{r}
+mean_starter_krate <- mean(pitching_starters$KRate, na.rm = T)
+mean_starter_krate
+```
+It looks like relief pitchers have a higher average strikeout percentage than starters. This makes sense because relief pitchers are usually specialized to pitch to less batters but use up more energy on those batters than starters. 
+
+### 3. What is the trend of strikeout % and walk % throughout the years?
+
+To answer this question, we can make a simple line plot of two datasets. To find the average strikeout % and walk % per year we can group them by the yearID and summarise a variable that stores the average of each. We can then create a lineplot and find the trend of the two variables and see how much they have affected the game in recent years compared to the past.
+```{r}
+krate_by_year <- Pitching |> group_by(yearID) |> summarise(avg_krate = mean(KRate, na.rm = T))
+
+walk_rate_by_year <- Pitching |> group_by(yearID) |> summarise(avg_walkrate = mean(walkRate, na.rm = T))
+
+ggplot() +
+  geom_line(data = krate_by_year, aes(x = yearID, y = avg_krate, color = "Strikeout %")) + 
+  geom_line(data = walk_rate_by_year, aes(x = yearID, y = avg_walkrate, color = "Walk %")) +
+  labs(title = "Strikeout and Walk % by Year",
+       x = "Year",
+       y = "%") + 
+  scale_color_manual(values = c("blue", "red"), name = "Lines")
+```
+This is a very interesting trend especially with the strikeout %. Strikeout % has increased exponentially since 1961 but is undergoing a bit of a dip since 2020. Meanwhile, walk % has been staying pretty much constant with only fluctuations and no major changes. We can clearly see the importance of strikeout % in today's game as it is so much higher now than before. However, there is nothing we can say about walk % as it has stayed constant. It also makes me question whether walk and strikeout % really have a positive relationship or no relationship at all. This only perks my interest even more in checking the true relationship between strikeout and walk rate. 
+
+## Inferential Statistical Analysis
+
+Because of the haziness of the relationship between K % and BB % as well as not so strong relationship between K % and ERA, we can conduct a linear regression model to see the specific changes 
+Linear regression model checking relationship between KRate and walkRate as well as KRate and ERA. 
+```{r}
+linear_reg <- lm(KRate ~ walkRate + ERA, data = pitching_starters)
+summary(linear_reg)
+```
+From this model we can see that the P-values are very small so we can find that there is a significant relationship between strikeout rate and the two other variables. We can also see how a one unit change in walkRate represents only a 0.3 unit change for strikeout rate. However, strikeout rate decreases by 1.958 every time ERA increases by one unit.
+
+## Conclusions and Future Questions
+
+Throughout this report, we learned the importance of strikeout and walk % and how they affect certain aspects of the sport. To see this, we visualized the data between the two variables as well as others. We also saw that there is a significant relationship between the two and were able to see whether they negatively or positively correlate. I also wanted to see the difference between relief pitchers and starters and found out that there is a big difference in the strikeout aspect of the different positions. Finally, we visualized the trend between the two variables through the years and saw how alarmingly strikeout % has increased despite the uniform trend of walk %. In the future, I would like to answer questions I have about the batting aspect of baseball as well as maybe use datasets that already include advanced stats from other websites like BaseballSavant. There are other datasets that could be used from other databases such as the "baseballr" package as well. I could have also used other datasets in the Lahman database itself such as Teams. They would have been interesting to use as well to spot trends in the sport but like I said, the pitching dataset drew me in the most. 
